@@ -1,0 +1,142 @@
+# AEGIS detection rules (BR-UC1-001..011). This file is the source of truth: it is copied
+# into the detection_rule table at start-up and on POST /api/v1/rules/reload.
+#
+# condition  SpEL expression; when it is true for a trade, the tag is written to trades_tags.
+# details    name -> SpEL expression; evaluated when the rule fires and stored as JSON.
+# enabled    optional, default true.
+#
+# Available in expressions:
+#   trade      trader, portfolio, counterparty, counterpartyType, fgt, currencies,
+#              nominalCurrency, insertionDate, insertionTime, offPremises, source
+#   trader     the trader profile, or null if the 1BankID is unknown:
+#              role, licensed, preRnfApproval, hiringManager, allowedPortfolios, allowedFgts,
+#              allowedCurrencies, effectiveDate, remoteAllowed
+#   portfolio  the iWork portfolio, or null if not found
+#   desk       the desk profile, or null if the portfolio maps to no desk
+#   rolloverTime
+#   excluded(id)              id is on the common exclusion list (system and interface users)
+#   exempt()                  the trader's role is DESK SUPPORT or SALES
+#   hasMandate()              the trader has a trader mandate
+#   mandateHas(kind, value)   kind is 'portfolio', 'fgt' or 'currency'
+#   mandateHasAll(kind, values)
+#   deskAllows(fgt)           the desk profile lists this family/group/type
+#   beforeEffectiveDate()     the trade was inserted before the mandate's effective date
+#   afterRollover()           the trade was inserted at or after the Murex rollover time
+#   remoteSession()           the trade was booked over remote access
+rules:
+  - brRef: BR-UC1-001
+    category: DQ - Desk Mandate
+    tag: DQDM001_PORTFOLIO_NOT_FOUND
+    blotter: DQ
+    workflowRole: DESK SUPPORT
+    condition: "desk == null"
+    details:
+      portfolio: "trade.portfolio"
+
+  - brRef: BR-UC1-002
+    category: DQ - Desk Mandate
+    tag: DQDM002_FGT_NOT_FOUND
+    blotter: DQ
+    workflowRole: DESK DELEGATE
+    condition: "desk != null && !deskAllows(trade.fgt)"
+    details:
+      fgt: "trade.fgt"
+      desk: "desk.desk"
+      subDesk: "desk.subDesk"
+      allowedFgts: "desk.allowedFgts"
+
+  - brRef: BR-UC1-003
+    category: DQ - Staff Profile
+    tag: DQTP001_STAFF_ROLE_NOT_FOUND
+    blotter: DQ
+    workflowRole: STAFF PROFILE DELEGATE
+    condition: "!excluded(trade.trader) && trader?.role == null"
+    details:
+      trader: "trade.trader"
+      knownTrader: "trader != null"
+      hiringManager: "trader?.hiringManager"
+
+  - brRef: BR-UC1-004
+    category: DQ - Trader Profile
+    tag: DQTP002_TRADER_NOT_FOUND
+    blotter: DQ
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && !hasMandate()"
+    details:
+      trader: "trade.trader"
+
+  - brRef: BR-UC1-005
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM001_PORTFOLIO_NOT_ALLOWED
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && hasMandate() && !mandateHas('portfolio', trade.portfolio)"
+    details:
+      trader: "trade.trader"
+      portfolio: "trade.portfolio"
+      allowedPortfolios: "trader.allowedPortfolios"
+
+  - brRef: BR-UC1-006
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM002_FGT_NOT_ALLOWED
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && hasMandate() && !mandateHas('fgt', trade.fgt)"
+    details:
+      trader: "trade.trader"
+      fgt: "trade.fgt"
+      allowedFgts: "trader.allowedFgts"
+
+  - brRef: BR-UC1-007
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM003_CURR_NOT_ALLOWED
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && hasMandate() && !mandateHasAll('currency', trade.currencies)"
+    details:
+      trader: "trade.trader"
+      currencies: "trade.currencies"
+      allowedCurrencies: "trader.allowedCurrencies"
+
+  - brRef: BR-UC1-008
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM004_TRADE_WO_LICENSE
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "trader?.role == 'TRADER' && !trader.licensed && trader.preRnfApproval == 'N'"
+    details:
+      trader: "trade.trader"
+      licensed: "trader.licensed"
+      preRnfApproval: "trader.preRnfApproval"
+
+  - brRef: BR-UC1-009
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM005_TRADE_BEFORE_EFF_DATE
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && hasMandate() && beforeEffectiveDate()"
+    details:
+      trader: "trade.trader"
+      insertionDate: "trade.insertionDate"
+      effectiveDate: "trader.effectiveDate"
+
+  - brRef: BR-UC1-010
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM006_LATE_TRADE_INSERTION
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && afterRollover()"
+    details:
+      trader: "trade.trader"
+      insertionTime: "trade.insertionTime"
+      rolloverTime: "rolloverTime"
+
+  - brRef: BR-UC1-011
+    category: Trader Conduct - Trader Mandate
+    tag: TCTM007_REMOTE_ACCESS
+    blotter: PT
+    workflowRole: DESK DELEGATE
+    condition: "!excluded(trade.trader) && !exempt() && remoteSession()"
+    details:
+      trader: "trade.trader"
+      offPremises: "trade.offPremises"

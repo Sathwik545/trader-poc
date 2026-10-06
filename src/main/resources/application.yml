@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: aegis-deal-detection-service
+  datasource:
+    url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:aegis}
+    username: ${DB_USER:aegis}
+    password: ${DB_PASSWORD:aegis}
+    driver-class-name: org.mariadb.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+aegis:
+  demo:
+    # loaded by the demo screen's "Run sample file" button; relative to the start folder
+    sample-file: docs/ada_deals_synthetic_10000.csv
+  ingest:
+    batch-size: 500
+    max-errors-shown: 50
+  detection:
+    chunk-size: 1000
+    # First location that exists wins. Copy rules.yaml to ./config/rules.yaml to edit rules
+    # on a running app, then POST /api/v1/rules/reload.
+    rules-locations:
+      - file:./config/rules.yaml
+      - classpath:rules.yaml
+    # BR-FD-003: a portfolio is in scope when it meets one of these. Only Hong Kong is modelled.
+    scope:
+      - country: Hong Kong
+        business-units: [GFM]
+        excluded-classifications: [Close]
+        excluded-mx-entities: [iWork only]
+    murex-rollover-time: "19:00"
+    exclusion-list:
+      - DBSINTF
+      - DBSINTFD
+      - "SETL%"
+      - BATCHUSER
+      - AUTOJOB
+      - ITGSUPP1
+      - ITGSUPP2
+      - "FITX%"
+      - "SYSTEM%"
+      - "SYNSGCREDITUS%"

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEGIS detection engine demo</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1b2330; --muted: #5d6878; --line: #dfe3ea;
+    --accent: #1f5fbf; --accent-ink: #ffffff; --bar: #c9dbf6; --row-hover: #f0f4fb;
+    --dq-bg: #fff1d6; --dq-ink: #7a4a00; --pt-bg: #fde3e1; --pt-ink: #8f1d14;
+    --ok: #17703c; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #12161c; --panel: #1b212a; --ink: #e7ebf1; --muted: #9aa5b5; --line: #2e3744;
+      --accent: #6ea4f5; --accent-ink: #0d1420; --bar: #2c4675; --row-hover: #232b37;
+      --dq-bg: #4a3610; --dq-ink: #ffd993; --pt-bg: #54211d; --pt-ink: #ffc4be;
+      --ok: #6fd69a; --bad: #ff8f86;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
+  header h1 { font-size: 20px; margin: 0 0 2px; }
+  header p { margin: 0 0 16px; color: var(--muted); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 14px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, select, input[type=file] { font: inherit; color: inherit; }
+  button { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; max-width: 100%; }
+  #status { min-height: 20px; margin-top: 10px; color: var(--muted); }
+  #status.error { color: var(--bad); font-weight: 600; }
+  #status.ok { color: var(--ok); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .tile { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .tile .label { color: var(--muted); font-size: 12px; }
+  .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .value.small { font-size: 14px; word-break: break-word; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  #rules tbody tr { cursor: pointer; }
+  #rules tbody tr:hover, #rules tbody tr.selected { background: var(--row-hover); }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; min-width: 2px; }
+  .barcell { width: 22%; min-width: 90px; vertical-align: middle; }
+  .chip { display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .chip.DQ { background: var(--dq-bg); color: var(--dq-ink); }
+  .chip.PT { background: var(--pt-bg); color: var(--pt-ink); }
+  td.whycell { min-width: 280px; }
+  .why .chip { white-space: normal; overflow-wrap: anywhere; }
+  .why { margin: 0 0 6px; }
+  .why:last-child { margin-bottom: 0; }
+  .why .detail { color: var(--muted); font-size: 12px; margin-top: 2px; word-break: break-word; }
+  .nowrap { white-space: nowrap; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .toolbar .spacer { flex: 1; }
+  .muted { color: var(--muted); }
+  .errors li { margin-bottom: 2px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AEGIS detection engine demo</h1>
+    <p>Upload a trade file, store it, run the business rules and see which trades were tagged and why. All data is synthetic.</p>
+  </header>
+
+  <section>
+    <h2>Run</h2>
+    <div class="controls">
+      <div class="group">
+        <button id="runSample">Run sample file (10,000 trades)</button>
+      </div>
+      <div class="group">
+        <input id="file" type="file" accept=".csv,text/csv" aria-label="Trade CSV file">
+        <button id="upload" class="secondary">Upload CSV</button>
+      </div>
+      <div class="group">
+        <label for="runs">Run</label>
+        <select id="runs"></select>
+        <button id="redetect" class="secondary" title="Run the rules again on the trades already stored for this run">Re-run detection</button>
+        <button id="reloadRules" class="secondary" title="Re-read rules.yaml without restarting the app">Reload rules</button>
+      </div>
+    </div>
+    <div id="status" role="status"></div>
+  </section>
+
+  <section id="summarySection" hidden>
+    <h2>Run summary</h2>
+    <div class="tiles" id="tiles"></div>
+    <div id="rowErrors" hidden>
+      <p><strong id="rowErrorsTitle"></strong></p>
+      <ul class="errors" id="rowErrorsList"></ul>
+    </div>
+  </section>
+
+  <section id="rulesSection" hidden>
+    <h2>Trades tagged per rule</h2>
+    <p class="muted">Click a rule to show only its trades below.</p>
+    <div class="scroll">
+      <table id="rules">
+        <thead><tr><th>BR Ref</th><th>Tag</th><th>Category</th><th>Blotter</th><th>Workflow to</th><th class="num">Trades</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tradesSection" hidden>
+    <h2>Flagged trades</h2>
+    <div class="toolbar">
+      <label for="tagFilter">Tag</label>
+      <select id="tagFilter"></select>
+      <span id="tradeCount" class="muted"></span>
+      <span class="spacer"></span>
+      <button id="prev" class="secondary">Previous</button>
+      <span id="pageInfo" class="muted"></span>
+      <button id="next" class="secondary">Next</button>
+    </div>
+    <div class="scroll">
+      <table id="trades">
+        <thead><tr>
+          <th>Deal no.</th><th>Trade date</th><th>Trader</th><th>Portfolio</th><th>Counterparty</th><th>Deal</th>
+          <th>Product</th><th>Ccy</th><th>Booked at</th><th>Off-prem</th><th>Tags and why they fired</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  const API = '/api/v1';
+  const PAGE_SIZE = 25;
+  const $ = id => document.getElementById(id);
+  const state = { runId: null, tag: '', page: 0, total: 0, blotterByTag: {} };
+  const buttons = ['runSample', 'upload', 'redetect', 'reloadRules', 'prev', 'next'].map($);
+
+  const number = n => Number(n).toLocaleString('en-GB');
+
+  function el(tag, text, className) {
+    const node = document.createElement(tag);
+    if (text !== undefined && text !== null) node.textContent = text;
+    if (className) node.className = className;
+    return node;
+  }
+
+  function setStatus(text, kind) {
+    $('status').textContent = text || '';
+    $('status').className = kind || '';
+  }
+
+  async function api(path, options) {
+    const response = await fetch(API + path, options);
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(body && body.message ? body.message : 'Request failed with status ' + response.status);
+    }
+    return body;
+  }
+
+  /** Runs an action with the buttons disabled and its outcome shown in the status line. */
+  async function busy(message, action, doneMessage) {
+    buttons.forEach(b => b.disabled = true);
+    setStatus(message);
+    try {
+      const result = await action();
+      setStatus(typeof doneMessage === 'function' ? doneMessage(result) : doneMessage, 'ok');
+    } catch (e) {
+      setStatus(e.message, 'error');
+    } finally {
+      buttons.forEach(b => b.disabled = false);
+      updatePager();
+    }
+  }
+
+  function runLabel(run) {
+    return '#' + run.runId + '  ' + (run.fileName || 'unnamed') + '  (' + run.status + ', ' + number(run.rowsStored) + ' trades)';
+  }
+
+  async function loadRuns(selectId, tag) {
+    const runs = await api('/runs');
+    const select = $('runs');
+    select.replaceChildren();
+    if (runs.length === 0) {
+      select.append(new Option('No runs yet', ''));
+      return;
+    }
+    runs.forEach(run => select.append(new Option(runLabel(run), run.runId)));
+    const wanted = selectId || state.runId || runs[0].runId;
+    select.value = String(wanted);
+    if (!select.value) select.value = String(runs[0].runId);
+    await showRun(Number(select.value), tag);
+  }
+
+  async function showRun(runId, tag) {
+    state.runId = runId;
+    state.page = 0;
+    const [summary, tags] = await Promise.all([api('/runs/' + runId), api('/runs/' + runId + '/tags')]);
+    state.tag = tags.some(t => t.tag === tag) ? tag : '';
+    renderSummary(summary);
+    renderRules(tags);
+    await loadTrades();
+  }
+
+  function tile(label, value, small) {
+    const box = el('div', null, 'tile');
+    box.append(el('div', label, 'label'), el('div', value, 'value' + (small ? ' small' : '')));
+    return box;
+  }
+
+  function renderSummary(s) {
+    const seconds = s.startedAt && s.endedAt ? Math.max(0, (new Date(s.endedAt) - new Date(s.startedAt)) / 1000) : null;
+    $('tiles').replaceChildren(
+      tile('Status', s.status, true),
+      tile('File', s.fileName || '-', true),
+      tile('Rows read', number(s.rowsRead)),
+      tile('Rows stored', number(s.rowsStored)),
+      tile('Rows failed', number(s.rowsFailed)),
+      tile('In scope', number(s.rowsInScope)),
+      tile('Internal deals (ID)', number(s.internalDeals)),
+      tile('External deals (ED)', number(s.externalDeals)),
+      tile('Started', s.startedAt ? s.startedAt.replace('T', ' ') : '-', true)
+    );
+    const errors = s.errors || [];
+    $('rowErrors').hidden = s.rowsFailed === 0;
+    $('rowErrorsTitle').textContent = number(s.rowsFailed) + ' rows could not be stored'
+      + (s.rowsFailed > errors.length ? ' (first ' + errors.length + ' shown)' : '') + ':';
+    $('rowErrorsList').replaceChildren(...errors.map(e => el('li', 'Row ' + e.rowNumber + ': ' + e.message)));
+    $('summarySection').hidden = false;
+  }
+
+  function renderRules(tags) {
+    state.blotterByTag = {};
+    const max = Math.max(1, ...tags.map(t => t.count));
+    const body = $('rules').tBodies[0];
+    body.replaceChildren();
+    const filter = $('tagFilter');
+    filter.replaceChildren(new Option('All flagged trades', ''));
+    tags.forEach(t => {
+      state.blotterByTag[t.tag] = t.blotterRef;
+      const row = el('tr');
+      row.dataset.tag = t.tag;
+      const blotter = el('td');
+      blotter.append(el('span', t.blotterRef || '-', 'chip ' + (t.blotterRef || '')));
+      const barCell = el('td', null, 'barcell');
+      const bar = el('div', null, 'bar');
+      bar.style.width = (t.count / max * 100) + '%';
+      if (t.count === 0) bar.style.visibility = 'hidden';
+      barCell.append(bar);
+      row.append(el('td', t.brRef, 'nowrap'), el('td', t.tag), el('td', t.category || '-'), blotter,
+        el('td', t.workflowRole || '-'), el('td', number(t.count), 'num'), barCell);
+      row.addEventListener('click', () => selectTag(state.tag === t.tag ? '' : t.tag));
+      body.append(row);
+      filter.append(new Option(t.brRef + '  ' + t.tag + '  (' + number(t.count) + ')', t.tag));
+    });
+    $('rulesSection').hidden = false;
+  }
+
+  async function selectTag(tag) {
+    state.tag = tag;
+    state.page = 0;
+    await busy('Loading trades...', loadTrades, '');
+  }
+
+  function detailText(details) {
+    if (!details) return '';
+    return Object.entries(details).map(([name, value]) => {
+      const shown = Array.isArray(value) ? value.join(', ') : (value === null ? 'none' : String(value));
+      return name + ': ' + shown;
+    }).join('  |  ');
+  }
+
+  async function loadTrades() {
+    const query = '?page=' + state.page + '&size=' + PAGE_SIZE + (state.tag ? '&tag=' + encodeURIComponent(state.tag) : '');
+    const page = await api('/runs/' + state.runId + '/trades' + query);
+    state.total = page.total;
+    $('tagFilter').value = state.tag;
+    for (const row of $('rules').tBodies[0].rows) row.classList.toggle('selected', row.dataset.tag === state.tag);
+
+    const body = $('trades').tBodies[0];
+    body.replaceChildren();
+    page.trades.forEach(t => {
+      const row = el('tr');
+      const why = el('td', null, 'whycell');
+      t.tags.forEach(tag => {
+        const block = el('div', null, 'why');
+        block.append(el('span', tag.brRef + '  ' + tag.tag, 'chip ' + (state.blotterByTag[tag.tag] || '')));
+        const detail = detailText(tag.details);
+        if (detail) block.append(el('div', detail, 'detail'));
+        why.append(block);
+      });
+      row.append(
+        el('td', t.dealNumber, 'nowrap'), el('td', t.tradeDate, 'nowrap'), el('td', t.trader || '-', 'nowrap'),
+        el('td', t.portfolio || '-', 'nowrap'), el('td', t.counterparty || '-', 'nowrap'), el('td', t.dealClass || '-'),
+        el('td', [t.family, t.group, t.type].filter(Boolean).join('/') || '-', 'nowrap'), el('td', t.currency || '-'),
+        el('td', t.insertionTime || '-', 'nowrap'), el('td', t.offPremises || '-'), why);
+      body.append(row);
+    });
+    if (page.trades.length === 0) {
+      const empty = el('td', 'No trades were tagged' + (state.tag ? ' with this tag.' : ' in this run.'), 'muted');
+      empty.colSpan = 11;
+      const row = el('tr');
+      row.append(empty);
+      body.append(row);
+    }
+    $('tradeCount').textContent = number(page.total) + ' trades';
+    $('tradesSection').hidden = false;
+    updatePager();
+  }
+
+  function updatePager() {
+    const pages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+    $('pageInfo').textContent = 'Page ' + (state.page + 1) + ' of ' + number(pages);
+    $('prev').disabled = $('prev').disabled || state.page === 0;
+    $('next').disabled = $('next').disabled || state.page >= pages - 1;
+  }
+
+  const finished = s => 'Run #' + s.runId + ' finished: ' + number(s.rowsStored) + ' trades stored, '
+    + number(Object.values(s.tagsPerRule || {}).reduce((a, b) => a + b, 0)) + ' tags written.';
+
+  $('runSample').addEventListener('click', () => busy('Storing the sample file and running detection...', async () => {
+    const summary = await api('/trades/sample', { method: 'POST' });
+    await loadRuns(summary.runId);
+    return summary;
+  }, finished));
+
+  $('upload').addEventListener('click', () => {
+    const file = $('file').files[0];
+    if (!file) { setStatus('Choose a CSV file first.', 'error'); return; }
+    busy('Storing ' + file.name + ' and running detection...', async () => {
+      const form = new FormData();
+      form.append('file', file);
+      const summary = await api('/trades/upload', { method: 'POST', body: form });
+      await loadRuns(summary.runId);
+      return summary;
+    }, finished);
+  });
+
+  $('redetect').addEventListener('click', () => {
+    if (!state.runId) { setStatus('There is no run to detect on yet.', 'error'); return; }
+    busy('Running detection on the stored trades of run #' + state.runId + '...', async () => {
+      const summary = await api('/runs/' + state.runId + '/detect', { method: 'POST' });
+      await loadRuns(summary.runId);
+      return summary;
+    }, finished);
+  });
+
+  $('reloadRules').addEventListener('click', () => busy('Reloading rules...', () => api('/rules/reload', { method: 'POST' }),
+    rules => rules.filter(r => r.enabled).length + ' rules loaded. Re-run detection to apply them to this run.'));
+
+  $('runs').addEventListener('change', e => {
+    if (e.target.value) busy('Loading run...', () => showRun(Number(e.target.value)), '');
+  });
+  $('tagFilter').addEventListener('change', e => selectTag(e.target.value));
+  $('prev').addEventListener('click', () => { state.page--; busy('Loading trades...', loadTrades, ''); });
+  $('next').addEventListener('click', () => { state.page++; busy('Loading trades...', loadTrades, ''); });
+
+  // /?run=1&tag=TCTM006_LATE_TRADE_INSERTION opens a run with one tag selected
+  const link = new URLSearchParams(location.search);
+  busy('Loading...', () => loadRuns(Number(link.get('run')) || null, link.get('tag')), '');
+})();
+</script>
+</body>
+</html>

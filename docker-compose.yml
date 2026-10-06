@@ -1,0 +1,23 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: aegis-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: aegis
+      MARIADB_USER: aegis
+      MARIADB_PASSWORD: aegis
+      MARIADB_ROOT_PASSWORD: aegis_root
+    ports:
+      - "3306:3306"
+    volumes:
+      - aegis-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  aegis-mariadb-data:

@@ -1,0 +1,8 @@
+* text=auto
+
+mvnw text eol=lf
+*.cmd text eol=crlf
+
+*.jar binary
+*.jpeg binary
+*.xlsx binary
